@@ -1,14 +1,20 @@
 ---
 title: 'PCA Example: Image Compression'
 author: "Kieran healy"
-date: "10/27/2019"
+date: "07/29/2020"
 output:
   html_document: default
 ---
 
+### Note
+An R project containing an `.Rmd` file (a notebook with code you can run, along with the all-important Elvis-Nixon image) can be downloaded as a zip file by [clicking here](https://github.com/kjhealy/mfa_pca/archive/master.zip), or you can browse the files on GitHub by following [this link](https://github.com/kjhealy/mfa_pca)
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+
+## Introduction and Motivation
 
 A decade or more ago I read a nice worked example from the political scientist Simon Jackman demonstrating how to do [Principal Components Analysis](https://en.wikipedia.org/wiki/Principal_component_analysis), one of the basic techniques for reducing data high-dimensional data (i.e. data with many variables or features) to some much smaller subset that nevertheless represents or condenses the information in the data in some useful way. In PCA, we transform the data in order to find the "best" set of underlying components. We want the dimensions we choose to be _orthogonal_ to one another---that is, linearly uncorrelated. An interactive introduction to some of the intuitions behind PCA can be found at [setosa.io](https://setosa.io/ev/principal-component-analysis/) (written by Victor Powell and Lewis Lehe). Next take a look at this [related discussion by Matt Brems](https://towardsdatascience.com/a-one-stop-shop-for-principal-component-analysis-5582fb7e0a9c). And finally here's a [tutorial by Lindsay Smith](http://www.cs.otago.ac.nz/cosc453/student_tutorials/principal_components.pdf) (PDF) that covers a little more of the algebra along with working through an example. 
 
