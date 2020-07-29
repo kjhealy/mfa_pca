@@ -1,6 +1,6 @@
 ---
 title: 'PCA Example: Image Compression'
-author: "Kieran healy"
+author: "Kieran Healy"
 date: "07/29/2020"
 output:
   html_document: default
