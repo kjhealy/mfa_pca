@@ -1,0 +1,493 @@
+---
+title: 'PCA Example: Image Compression'
+author: "Kieran healy"
+date: "10/27/2019"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+A decade or more ago I read a nice worked example from the political scientist Simon Jackman demonstrating how to do [Principal Components Analysis](https://en.wikipedia.org/wiki/Principal_component_analysis), one of the basic techniques for reducing data high-dimensional data (i.e. data with many variables or features) to some much smaller subset that nevertheless represents or condenses the information in the data in some useful way. In PCA, we transform the data in order to find the "best" set of underlying components. We want the dimensions we choose to be _orthogonal_ to one another---that is, linearly uncorrelated. An interactive introduction to some of the intuitions behind PCA can be found at [setosa.io](https://setosa.io/ev/principal-component-analysis/) (written by Victor Powell and Lewis Lehe). Next take a look at this [related discussion by Matt Brems](https://towardsdatascience.com/a-one-stop-shop-for-principal-component-analysis-5582fb7e0a9c). And finally here's a [tutorial by Lindsay Smith](http://www.cs.otago.ac.nz/cosc453/student_tutorials/principal_components.pdf) (PDF) that covers a little more of the algebra along with working through an example. 
+
+
+Like much of the toolkit of linear algebra, PCA has _many_ applications. In the context of data analysis it can be thought of as an inductive method where a lot of the interpretation of the components is left up to the researcher. Because of the way it works, we're arithmetically _guaranteed_ to find a set of components that "explain" all the variance we observe. The _substantive_ explanatory question is whether the main components uncovered by PCA have a plausible interpretation. T
+
+The second half of this discussion has an example using some high-dimensional social science data or, to put it rather more mundanely, a bunch of different measures of characteristics of counties in the Midwestern United States. But to begin with let's motivate PCA in a different way. Another way of saying "PCA is a technique for high-dimensional data reduction" is to say "PCA is a technique for summarizing data with many details into a smaller amount of information that retains the general gist of the original". Another way of saying _that_ is that PCA is a techique for _compressing_ data down to a few key elements --- or, well, a few principal components.
+
+A nice thing about Jackman's discussion was that he did PCA on an image, in order to show both how you could reconstruct the whole image from the PCA and, more importantly, to provide some intuition about what the first few components of a PCA picked up on. His discussion doesn't seem to be available anymore, I rewrote the example myself. I'll use the same image he did. This one:
+
+![Elvis meets Nixon](img/elvis-nixon.jpeg)
+
+
+## Setup
+
+We set up our tidyverse toolkit as usual. 
+
+```{r}
+# install.packages(c("tidyverse", "here", "broom"), repos = "http://cran.rstudio.com")
+library(tidyverse)
+library(here)
+library(broom)
+```
+
+
+For managing the image, the [Imager Library](https://dahtah.github.io/imager/imager.html) is our friend here. It's a great toolkit for processing images in R, and it's friendly to tidyverse packages, too. 
+
+
+```{r}
+# install.packages("imager", repos = "http://cran.rstudio.com")
+library(imager)
+
+```
+
+## Load the image
+
+Our image is in the `img/` subfolder of our project directory. The `load.image()` function is from Imager. It imports the image as a `cimg` object. The library provides a method to convert these objects to a long-form data frame. Our image is grayscale, which makes it easier to work with. It's 800 pixels wide by 633 pixels tall. 
+
+```{r}
+img <- load.image(here("img/elvis-nixon.jpeg"))
+str(img)
+dim(img)
+
+img_df_long <- as.data.frame(img)
+
+head(img_df_long)
+```
+
+Each x-y pair is a location in the 800 by 600 pixel grid, and the value is a grayscale value ranging from zero to one. To do a PCA we will need a matrix of data in wide format, though---one that reproduces the shape of the image (i.e. a rectangle), just as a numerical matrix. We'll widen it using `pivot_wider`:
+
+```{r}
+
+
+img_df <- tidyr::pivot_wider(img_df_long, 
+                             names_from = y, 
+                             values_from = value)
+
+dim(img_df)
+
+## Look at first five rows and first five columns
+img_df[1:5, 1:5]
+
+```
+
+Notice the `x` column there, which just name each of the rows. It's not part of the matrix as such
+
+## Do the PCA manually
+
+```{r}
+
+
+# Image data
+tmp <- img_df %>% select(-x)
+dim(tmp)
+tmp[1:5, 1:5]
+
+# Scaled and centered
+tmp_norm <- scale(tmp, center = TRUE, scale = TRUE)
+tmp_norm[1:5, 1:5]
+
+
+# Covariance matrix
+cov_mat <- cov(tmp_norm)
+dim(cov_mat)
+cov_mat[1:5, 1:5]
+
+# Decomposition/Factorization into
+# Eigenvalues and eigenvectors
+cov_eig <- eigen(cov_mat)
+names(cov_eig)
+
+# Eigenvalues (variances)
+cov_evals <- cov_eig$values
+cov_evals[1:5]
+
+# Eigenvectors (principal components)
+cov_evecs <- cov_eig$vectors 
+cov_evecs[1:5, 1:5]
+
+# Rotation matrix -- i.e. the coordinates of the 
+# original data points translated into the 
+# transformed coordinate space prcomp$rotation
+tmp_rot <- tmp_norm %*% cov_evecs
+dim(tmp_rot)
+tmp_rot[1:5, 1:5]
+
+# Should be zero
+round(cov(cov_evecs), 2)[1:5,1:5]
+
+```
+
+## Do the PCA with `prcomp()` instead
+
+We don't need to do the PCA manually, of course. Dropping the `x` column that ids the rows, instead we feeding the 800x633 matrix to R's `prcomp()` function.
+
+```{r}
+img_pca <- img_df %>%
+  dplyr::select(-x) %>%
+  prcomp(scale = TRUE, center = TRUE)
+```
+
+We can tidy the output of `prcomp` with the `broom` package's `tidy` function. We'll do that to get a summary scree plot showing the variance "explained" by each component. 
+
+```{r}
+pca_tidy <- tidy(img_pca, matrix = "pcs")
+
+## What it looks like
+pca_tidy
+
+pca_tidy %>%
+  ggplot(aes(x = PC, y = percent)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::percent) + 
+  labs(x = "Principal Component", y = "Percent Variance Explained") 
+
+```
+
+
+Looks like a _lot_ of the "information" in the image is contained in just the first few principal components.
+
+## Reversing the PCA
+
+Now comes the fun bit. The object produced by `prcomp()` has a few pieces inside:
+
+```{r }
+names(img_pca)
+```
+
+What are these? `sdev` contains the standard deviations of the principal components. `rotation` is a matrix where the rows correspond to the columns of the original data, and the columns are the principal components. `x` is a matrix containing the value of the rotated data multiplied by the `rotation` matrix. Finally, `center` and `scale` are vectors showing the centering and scaling adjustments for each observation. 
+
+We're going to run the PCA backwards. We can run it backwards to _perfectly_ reconstitute the information in the original image simply by reversing all of our steps. Thus, we need to multiply `x` by the transpose of the `rotation` matrix, and then remove the centering and remove the scaling. If we multiply by the transpose of the _full_ rotation matrix (and then un-center and un-scale), we'll recover the original data matrix exactly. This is just a matter of running the matrix multiplication and so on in the reverse direction.
+
+But, thanks to the way matrix multiplication works, we can also choose to use just the first few principal components from our PCA when doing the reversal. There are 633 components in all (corresponding to the number of rows in the original data matrix). As we saw, though, the scree plot suggests that most of the data is "explained" by a much smaller number of components than that. 
+
+Here's a function that takes a PCA object created by `prcomp()` and returns an approximation of the original data, calculated by some number (`n_comp`) of principal components. It returns its results in long format, in a way that mirrors what the Imager library wants. This will make plotting easier in a minute.
+
+```{r}
+
+reverse_pca <- function(n_comp = 20, pca_object = img_pca){
+  ## The pca_object is an object created by base R's prcomp() function.
+  
+  ## Multiply the matrix of rotated data by the transpose of the matrix 
+  ## of eigenvalues (i.e. the component loadings) to get back to a 
+  ## matrix of original data values. But don't use the full matrix, use
+  ## some subset of Principal Components defined by n_comp. By default, 
+  ## components 1 to 20. n_comp can be any number fom 1 to the number
+  ## of components in the pca_object.
+  recon <- pca_object$x[, 1:n_comp] %*% t(pca_object$rotation[, 1:n_comp])
+  
+  ## Reverse any scaling and centering that was done by prcomp()
+    if(all(pca_object$scale != FALSE)){
+    
+    ## Rescale by the reciprocal of the scaling factor, i.e. back to
+    ## original range.
+    recon <- scale(recon, center = FALSE, scale = 1/pca_object$scale)
+  }
+  if(all(pca_object$center != FALSE)){
+    
+    ## Remove any mean centering by adding the subtracted mean back in
+    recon <- scale(recon, scale = FALSE, center = -1 * pca_object$center)
+  }
+  
+  ## Make recon a data frame that we can easily pivot to long format
+  ## (because that's the format that the excellent imager library wants
+  ## when drawing image plots with ggplot)
+  recon_df <- data.frame(cbind(1:nrow(recon), recon))
+  colnames(recon_df) <- c("x", 1:(ncol(recon_df)-1))
+
+  ## Return the data to long form 
+  recon_df_long <- recon_df %>%
+    tidyr::pivot_longer(cols = -x, 
+                        names_to = "y", 
+                        values_to = "value") %>%
+    mutate(y = as.numeric(y)) %>%
+    arrange(y) %>%
+    as.data.frame()
+  
+  ## Return the result to the user
+  recon_df_long
+}
+
+
+```
+
+Let's put the function to work by mapping it to our PCA object, and reconstructing our image based on the first 2, 3, 4, 5, 10, 20, 50, and 100 principal components.
+
+```{r}
+
+## The sequence of PCA components we want
+n_pcs <- c(2:5, 10, 20, 50, 100)
+names(n_pcs) <- paste("First", n_pcs, "Components", sep = "_")
+
+## Map reverse_pca() 
+recovered_imgs <- map_dfr(n_pcs, 
+                          reverse_pca, 
+                          .id = "pcs") %>%
+  mutate(pcs = stringr::str_replace_all(pcs, "_", " "), 
+         pcs = factor(pcs, levels = unique(pcs), ordered = TRUE))
+
+```
+
+This gives us a very long tibble with an index (`pcs`) for the number of components used to reconstruct the image. In essence it's eight images stacked on top of one another, with each image being reconstituted using a larger number of components than before. Now we can plot each image in a small multiple. 
+
+```{r, fig.width = 8, fig.height = 16}
+p <- ggplot(data = recovered_imgs, 
+            mapping = aes(x = x, y = y, fill = value))
+p_out <- p + geom_raster() + 
+  scale_y_reverse() + 
+  scale_fill_gradient(low = "black", high = "white") +
+  facet_wrap(~ pcs, ncol = 2) + 
+  guides(fill = FALSE) + 
+  labs(title = "Recovering the content of an 800x600 pixel image\nfrom a Principal Components Analysis of its pixels") + 
+  theme(strip.text = element_text(face = "bold", size = rel(1.2)),
+        plot.title = element_text(size = rel(1.5)))
+
+p_out
+
+ggsave(here("figures/elvis-pca.png"), p_out, height = 16, width = 8)
+
+```
+
+There's a lot more one could do with this, especially if I knew rather more linear algebra than I in fact do haha. But at any rate we can see that it's pretty straightforward to use R to play around with PCA and images in a tidy framework. 
+
+
+
+# Midwest data
+
+Lets use the `midwest` data that we've seen once or twice before to apply PCA in a data analysis context. Remember what it looks like:
+
+```{r mw1}
+midwest
+```
+
+There are a bunch of US counties from Midwestern states, and we have a whole bunch of numeric measures from the Census. Let's group them by state and then select just the numeric measures:. 
+
+```{r mw2}
+mw_pca <- midwest %>%
+    group_by(state) %>%
+    select_if(is.numeric) %>%
+    select(-PID)
+    
+mw_pca
+```
+
+Note the use of `select_if()` there. We also drop `PID` because although it's numeric, it's a case identifier, not a measured variable.
+
+Now let's write a PCA helper function that's specific to the data we're working with. It takes some data, `df` and then does the thing we want to that data---in this case, fit a PCA using the `prcomp` function. 
+
+```{r pca0}
+do_pca <- function(df){
+  prcomp(df,
+         center = TRUE, scale = TRUE)
+}
+```
+
+The `center` and `scale` arguments are for `prcomp`. PCA results are sensitive to how variables are measured, so it is conventional to center them (by subtracting the mean of each one) and scale them (by dividing by the standard deviations). This makes the resulting numerical values more directly comparable.
+
+As before we could do a PCA on the whole dataset:
+
+```{r pca3}
+out_pca <- mw_pca %>%
+    ungroup() %>%
+    select(-state) %>%
+    do_pca()
+```
+
+If you print the results of a PCA analysis to the console, you will see a square table of numbers. The *rows* of this table will have the same names as the *columns* from our original data, i.e., the variables. The *columns* are the orthogonal principal components, named `PC1` to `PC24` in this case. (Each column is an eigenvector.)  There will be as many components as variables. Ideally, the first few components will "explain" most of the variation in the data, and the way that the original variables are associated with each component will have some sort of substantively plausible interpretation.
+
+Here's peek at the components for the whole dataset:
+
+```{r pca4}
+
+out_pca
+
+```
+
+You can also get a summary of the components:
+
+```{r pca5}
+summary(out_pca)
+```
+
+There's a `broom` method for PCA, so we can tidy the results. The function can tidy up in various ways. We use the `matrix` argument to get tidy information on the principal components. 
+
+```{r pca6}
+
+tidy_pca <- tidy(out_pca, matrix = "pcs")
+
+tidy_pca
+
+```
+
+You can see from the `percent` and `cumulative` columns that the first principal component accounts for 40% of the variance. The second accounts for about 20% by itself and 60% cumulatively, and so on. By the fourth component we're up to 77 percent accounted for. Note again that although it's conventional to say that the components "explain" the variance in the variables, this is something that's mathematically guaranteed by the way that the calculation happens. Whether this purely formal sense of "explanation" translates into something more substantively explanatory is a separate question.
+
+Now we can make a "scree plot", showing the relative importance of the components. Ideally we'd like the first four or so to account for almost all the variance:
+
+```{r pca7}
+tidy_pca %>%
+    ggplot(aes(x = PC, y = percent)) +
+    geom_line() +
+    labs(x = "Principal Component", y = "Variance Explained") 
+
+
+```
+
+Not bad. 
+
+We can also project the original data points back in, using broom's `augment` function (to give tidy observation-level summaries) rather than `tidy`.
+
+```{r}
+aug_pca <- augment(out_pca, data = mw_pca[,-1])
+aug_pca <-  aug_pca %>% 
+  tibble::add_column(midwest$state, midwest$county, .before = TRUE) %>%
+  rename(state = `midwest$state`, county = `midwest$county`)
+
+ggplot(data = aug_pca, 
+       mapping = aes(x = .fittedPC1,
+                     y = .fittedPC2,
+                     color = state)) + 
+  geom_point()
+
+```
+
+
+## PCA on the Midwest data, grouped by State
+
+Now, Let's say instead of doing a PCA on the whole dataset at once, we wanted to do it within each state instead. This is where our split-apply-combine approach comes in. First we take our `mw_pca` data and nest it within states:
+
+```{r pca8}
+mw_pca <- mw_pca %>%
+    group_by(state) %>%
+    nest()
+
+mw_pca
+```
+
+Now we can do the PCA by group (i.e. by state) and tidy the results:
+
+```{r pca1}
+
+state_pca <- mw_pca %>% 
+    mutate(pca = map(data, do_pca))
+
+state_pca
+
+```
+
+This gives us a new list column, `pca`, each row of which is an object that contains all the results of  running `prcomp()`. We can add a second list column with the tidied summary. Again we'll write a helper function to make what we're doing a little more legible. 
+
+```{r pca12}
+do_tidy <- function(pr){
+    broom::tidy(pr, matrix = "pcs")
+}
+
+```
+
+```{r pca10}
+
+state_pca  <- mw_pca %>%
+    mutate(pca = map(data, do_pca),
+           pcs = map(pca, do_tidy)) 
+
+state_pca
+```
+
+The `pcs` list column contains the tidied summary of the PCA. We can unnest it, and draw a graph like before, only with state-level grouping:
+
+```{r, fig.fullwidth = TRUE, fig.height = 3, fig.width = 8}
+
+state_pca %>%
+    unnest(cols = c(pcs)) %>%
+    ggplot(aes(x = PC, y = percent)) +
+    geom_line(size = 1.1) +
+    facet_wrap(~ state, nrow = 1) +
+    labs(x = "Principal Component",
+         y = "Variance Explained") 
+
+```
+
+We can also use the tools that broom gives us to see where the original data points (the counties) fall in the space created by the PCA. For this we'll use broom's `augment()` function. Augment returns tidy information at the level of the original observations (in this case, the counties in the `midwest` data). Again, a helper function for clarity. 
+
+```{r }
+
+do_aug <- function(pr){
+    broom::augment(pr)
+}
+
+```
+
+Let's just recreate the whole object with the augmented data there as a third list column:
+
+```{r }
+state_pca  <- mw_pca %>%
+    mutate(pca = map(data, do_pca),
+           pcs = map(pca, do_tidy),
+           fitted = map(pca, do_aug)) 
+
+state_pca
+
+```
+
+You can see that the tibbles in the `fitted` list column all have 25 columns (the 24 numeric variables in `midwest` + their id), and a varying number of rows. The number of rows is the number of counties in that state.
+
+Now we plot the counties projected on to the first two principal components, faceted by state. We facet the graph because we ran the PCA separately for each state.
+
+```{r }
+state_pca %>%
+    unnest(cols = c(fitted)) %>%
+    ggplot(aes(x = .fittedPC1,
+               y = .fittedPC2)) +
+    geom_point() +
+    facet_wrap(~ state) + 
+    labs(x = "First Principal Component", 
+         y = "Second Principal Component") 
+
+```
+
+It looks like the counties within each state cluster very strongly on the first component (the x-axis), with a couple of outlying counties in each case. The variation is on the second component (the y-axis). Just for the sake of it, because now I'm curious about what those outlying counties are, let's redo all the steps from the start, this time also holding on to the county names so we can use them the plot. Here we go, all in one breath from the very beginning:
+
+```{r, fig.height = 30, fig.width = 10, fig.fullwidth = TRUE}
+
+out <- midwest %>%
+    group_by(state) %>%
+    select_if(is.numeric) %>%
+    select(-PID) %>%
+    nest() %>%
+    mutate(pca = map(data, do_pca),
+           pcs = map(pca, do_tidy),
+           fitted = map(pca, do_aug)) %>%
+    unnest(cols = c(fitted)) %>%
+    add_column(county = midwest$county) 
+
+
+ggplot(data = out, aes(x = .fittedPC1,
+               y = .fittedPC2,
+               label = county)) +
+    geom_text(size = 1.9) +
+    labs(x = "First Principal Component", 
+         y = "Second Principal Component") +
+    theme_minimal() + facet_wrap(~ state, ncol = 1) 
+
+
+```
+
+We can do that last `add_column(county = midwest$county)` step because we know we've ended with a tibble where the rows are the same entities (and in the same order) as the original `midwest` dataset. 
+
+You can see that in some cases the big outliers along the x-axis (the first component) are very highly populated counties. E.g. Cook County, IL, is the city of Chicago, Marion County, IN, is Indianapolis, and so on. Meanwhile, on the y-axis (the second cmponent), looking at Illinois we can see DuPage County at one end, a well-to-do exurb of Chicago where Wheaton is located. And at the other end is Alexander County, the southernmost county in Illinois, with a relatively small population (about 8,000 people). Compare the characterizations of [Alexander County](https://en.wikipedia.org/wiki/Alexander_County,_Illinois) and [DuPage County](https://en.wikipedia.org/wiki/DuPage_County,_Illinois) to get a sense of why the PCA is putting them far apart from one another on the first component. 
+
+We can also look at the second and third components. Ideally the interpretation here is something like "Accounting for or excluding or apart from everything that the first component is picking up, how do counties vary or cluster on the next two orthogonal dimensions identified by the PCA?"
+
+```{r, fig.height = 30, fig.width = 10, fig.fullwidth = TRUE}
+ggplot(data = out, aes(x = .fittedPC2,
+               y = .fittedPC3,
+               label = county)) +
+    geom_text(size = 1.9) +
+    labs(x = "Second Principal Component", 
+         y = "Third Principal Component") +
+    theme_minimal() + facet_wrap(~ state, ncol = 1) 
+
+```
+
+
