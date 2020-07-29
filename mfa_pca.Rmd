@@ -17,7 +17,7 @@ Like much of the toolkit of linear algebra, PCA has _many_ applications. In the 
 
 The second half of this discussion has an example using some high-dimensional social science data or, to put it rather more mundanely, a bunch of different measures of characteristics of counties in the Midwestern United States. But to begin with let's motivate PCA in a different way. Another way of saying "PCA is a technique for high-dimensional data reduction" is to say "PCA is a technique for summarizing data with many details into a smaller amount of information that retains the general gist of the original". Another way of saying _that_ is that PCA is a techique for _compressing_ data down to a few key elements --- or, well, a few principal components.
 
-A nice thing about Jackman's discussion was that he did PCA on an image, in order to show both how you could reconstruct the whole image from the PCA and, more importantly, to provide some intuition about what the first few components of a PCA picked up on. His discussion doesn't seem to be available anymore, I rewrote the example myself. I'll use the same image he did. This one:
+A nice thing about Jackman's discussion was that he did PCA on an image, in order to show both how you could reconstruct the whole image from the PCA and, more importantly, to provide some intuition about what the first few components of a PCA picked up on. His discussion doesn't seem to be available anymore, so I rewrote the example myself. I'll use the same image he did. This one:
 
 ![Elvis meets Nixon](img/elvis-nixon.jpeg)
 
